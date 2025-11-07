@@ -1,6 +1,17 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+dotenv.config();
+
+const app = express();
+
+// 👇 هذا السطر هو المفتاح
+app.use(cors({ origin: "https://courageous-pastelito-cb5c1e.netlify.app" }));
+
+app.use(express.json());
+import express from "express";
+import cors from "cors";
+import dotenv from "dotenv";
 import bodyParser from "body-parser";
 import { Pool } from "pg";
 import crypto from "crypto";
