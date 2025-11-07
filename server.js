@@ -1,91 +1,81 @@
 // server.js
-// يتطلب package.json يحتوي "type": "module"
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import bodyParser from "body-parser";
-import { Pool } from "pg";
+import pkg from "pg";
 
 dotenv.config();
 
-const app = express();
+const { Pool } = pkg;
 
-// ====== CORS ======
-// نقرأ ALLOWED_ORIGIN من متغيّرات البيئة.
-// إن لم يُحدد، نستخدم "*" (مفيد للاختبار لكن غير آمن للإنتاج).
-const allowedOrigin = process.env.ALLOWED_ORIGIN || "*";
-
-if (allowedOrigin === "*") {
-  app.use(cors());
-  console.log("CORS: allowing all origins (*)");
-} else {
-  app.use(
-    cors({
-      origin: allowedOrigin,
-      methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-      credentials: true,
-    })
-  );
-  console.log("CORS: allowing origin ->", allowedOrigin);
-}
-
-// ====== Body parsers ======
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
-
-// ====== Logging middleware ======
-// هذا يساعدنا نرى إذا وصلت الطلبات من Netlify وما هو الـ origin
-app.use((req, res, next) => {
-  console.log("→ Incoming request:", req.method, req.url, "Origin:", req.headers.origin || "(no origin)");
-  next();
-});
-
-// ====== Database (Postgres) setup ======
-if (!process.env.DATABASE_URL) {
-  console.error("FATAL: DATABASE_URL is not set in the environment.");
-  // نترك التشغيل لكن Endpoint /api/testdb سيرد بخطأ واضح.
-}
-
+// إعداد قاعدة البيانات
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  // التحكم في SSL عبر متغير DB_SSL:
-  // إذا ضبطته على "false" في متغيرات البيئة، نتجنّب rejectUnauthorized.
-  ssl: process.env.DB_SSL === "false" ? false : { rejectUnauthorized: false },
+  ssl: { rejectUnauthorized: false }
 });
 
-// ====== Routes ======
-// Root
-app.get("/", (req, res) => {
-  res.send("✅ Rewards backend is running!");
+const app = express();
+app.use(express.json());
+app.use(cors());
+
+// ✅ اختبار الاتصال بالسيرفر
+app.get("/", async (req, res) => {
+  res.json({
+    ok: true,
+    time: new Date(),
+    message: "Server is running successfully!"
+  });
 });
 
-// اختبار الاتصال بالقاعدة
-app.get("/api/testdb", async (req, res) => {
-  if (!process.env.DATABASE_URL) {
-    return res.json({ ok: false, error: "DATABASE_URL not configured" });
-  }
-
+// ✅ جلب جميع المستخدمين
+app.get("/api/users", async (req, res) => {
   try {
-    const result = await pool.query("SELECT NOW()");
-    return res.json({ ok: true, time: result.rows[0] });
+    const result = await pool.query("SELECT * FROM users ORDER BY id DESC");
+    res.json(result.rows);
   } catch (err) {
-    console.error("DB error:", err);
-    return res.json({ ok: false, error: err.message || String(err) });
+    console.error("Error fetching users:", err);
+    res.status(500).json({ error: "Database error" });
   }
 });
 
-// مثال endpoint بسيط
-app.post("/api/ping", (req, res) => {
-  return res.json({ ok: true, received: req.body || null });
+// ✅ جلب جميع المزودين
+app.get("/api/providers", async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM providers ORDER BY id DESC");
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Error fetching providers:", err);
+    res.status(500).json({ error: "Database error" });
+  }
 });
 
-// خطأ عام Middleware
-app.use((err, req, res, next) => {
-  console.error("Unhandled error:", err);
-  res.status(500).json({ ok: false, error: err.message || "Internal error" });
+// ✅ تعديل الإعدادات العامة
+app.get("/api/settings", async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM settings");
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Error fetching settings:", err);
+    res.status(500).json({ error: "Database error" });
+  }
 });
 
-// ====== Start server ======
+// ✅ تحديث إعداد معين
+app.post("/api/settings", async (req, res) => {
+  const { key, value } = req.body;
+  try {
+    await pool.query(
+      "INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2",
+      [key, value]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Error updating settings:", err);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+// ✅ تشغيل السيرفر
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
