@@ -1,5 +1,5 @@
 // server.js
-// متوافق مع "type": "module" في package.json
+// يتطلب package.json يحتوي "type": "module"
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -10,13 +10,14 @@ dotenv.config();
 
 const app = express();
 
-// إعدادات الـCORS:
-// استخدم قيمة ALLOWED_ORIGIN من متغيرات البيئة إن وُجدت
-// وإلا اسمح لكل المواقع (مفيد للاختبار). يفضّل ضبط ALLOWED_ORIGIN إلى رابط Netlify في الإنتاج.
+// ====== CORS ======
+// نقرأ ALLOWED_ORIGIN من متغيّرات البيئة.
+// إن لم يُحدد، نستخدم "*" (مفيد للاختبار لكن غير آمن للإنتاج).
 const allowedOrigin = process.env.ALLOWED_ORIGIN || "*";
 
 if (allowedOrigin === "*") {
   app.use(cors());
+  console.log("CORS: allowing all origins (*)");
 } else {
   app.use(
     cors({
@@ -25,37 +26,46 @@ if (allowedOrigin === "*") {
       credentials: true,
     })
   );
+  console.log("CORS: allowing origin ->", allowedOrigin);
 }
 
+// ====== Body parsers ======
 app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 
-// تهيئة اتصال Postgres عبر متغيّر البيئة DATABASE_URL
+// ====== Logging middleware ======
+// هذا يساعدنا نرى إذا وصلت الطلبات من Netlify وما هو الـ origin
+app.use((req, res, next) => {
+  console.log("→ Incoming request:", req.method, req.url, "Origin:", req.headers.origin || "(no origin)");
+  next();
+});
+
+// ====== Database (Postgres) setup ======
 if (!process.env.DATABASE_URL) {
   console.error("FATAL: DATABASE_URL is not set in the environment.");
-  // لا نوقف التشغيل هنا تلقائيًا — لكن سنظهر خطأ عند محاولة استخدام الـDB.
+  // نترك التشغيل لكن Endpoint /api/testdb سيرد بخطأ واضح.
 }
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  // Render/Postgres قد يحتاج SSL=false أو SSL rejectUnauthorized false.
-  // نستخدم rejectUnauthorized:false لنتجنّب مشاكل شهادة في بيئات مُدارة (مثل Render).
-  // إن كان لديك CA موثوق يمكنك تغييره لاحقًا.
+  // التحكم في SSL عبر متغير DB_SSL:
+  // إذا ضبطته على "false" في متغيرات البيئة، نتجنّب rejectUnauthorized.
   ssl: process.env.DB_SSL === "false" ? false : { rejectUnauthorized: false },
 });
 
-// بسيط endpoint للاختبار العام
+// ====== Routes ======
+// Root
 app.get("/", (req, res) => {
-  res.send("✅ Rewards backend is running successfully!");
+  res.send("✅ Rewards backend is running!");
 });
 
-// اختبار الاتصال بقاعدة البيانات
+// اختبار الاتصال بالقاعدة
 app.get("/api/testdb", async (req, res) => {
   if (!process.env.DATABASE_URL) {
     return res.json({ ok: false, error: "DATABASE_URL not configured" });
   }
 
   try {
-    // نستخدم استعلام بسيط للتحقق من التوقيت في DB
     const result = await pool.query("SELECT NOW()");
     return res.json({ ok: true, time: result.rows[0] });
   } catch (err) {
@@ -64,18 +74,18 @@ app.get("/api/testdb", async (req, res) => {
   }
 });
 
-// مثال endpoint آمن يتطلب body
+// مثال endpoint بسيط
 app.post("/api/ping", (req, res) => {
   return res.json({ ok: true, received: req.body || null });
 });
 
-// Middleware لاستقبال أخطاء غير متوقعة
+// خطأ عام Middleware
 app.use((err, req, res, next) => {
   console.error("Unhandled error:", err);
   res.status(500).json({ ok: false, error: err.message || "Internal error" });
 });
 
-// بدء السيرفر
+// ====== Start server ======
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
