@@ -1,25 +1,19 @@
-import express from "express";
-import cors from "cors";
-import dotenv from "dotenv";
-dotenv.config();
-
-const app = express();
-
-// 👇 هذا السطر هو المفتاح
-app.use(cors({ origin: "https://courageous-pastelito-cb5c1e.netlify.app" }));
-
-app.use(express.json());
+// server.js - نظيف ومهيأ للاستخدام مع "type": "module"
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import bodyParser from "body-parser";
 import { Pool } from "pg";
-import crypto from "crypto";
 
 dotenv.config();
 
 const app = express();
-app.use(cors());
+
+// اسمح بالطلبات من لوحة Netlify فقط (أكثر أمانًا)
+// استبدل الرابط إذا كان مختلفًا
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "https://courageous-pastelito-cb5c1e.netlify.app";
+app.use(cors({ origin: ALLOWED_ORIGIN }));
+
 app.use(bodyParser.json());
 
 const pool = new Pool({
@@ -38,15 +32,6 @@ app.get("/api/testdb", async (req, res) => {
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
-});
-
-app.post("/api/testcrypto", (req, res) => {
-  const secret = process.env.MASTER_KEY_BASE64 || "no-key";
-  const encrypted = crypto
-    .createHmac("sha256", secret)
-    .update("test")
-    .digest("hex");
-  res.json({ ok: true, encrypted });
 });
 
 const PORT = process.env.PORT || 10000;
