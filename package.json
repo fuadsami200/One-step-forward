@@ -1,5 +1,6 @@
 {
   "name": "rewards-backend",
+  "type": "module",
   "version": "1.0.0",
   "description": "Backend API for rewards and offers management",
   "main": "server.js",
